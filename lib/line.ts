@@ -11,6 +11,7 @@ export type LineMessage =
     };
 
 type ReplyBody = { replyToken: string; messages: LineMessage[] };
+type PushBody = { to: string; messages: LineMessage[] };
 
 /** ========== ENV ========== */
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN!;
@@ -25,7 +26,7 @@ export function verifyLineSignature(rawBody: string, signature?: string): boolea
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(hmac));
 }
 
-/** ========== LINE Reply Helpers ========== */
+/** ========== LINE Fetch Helper ========== */
 async function lineFetch(path: string, init: RequestInit) {
   const res = await fetch(`https://api.line.me${path}`, {
     ...init,
@@ -42,6 +43,7 @@ async function lineFetch(path: string, init: RequestInit) {
   return res;
 }
 
+/** ========== LINE Reply / Push Helpers ========== */
 export async function lineReplyMessages(replyToken: string, messages: LineMessage[]) {
   const body: ReplyBody = { replyToken, messages };
   await lineFetch("/v2/bot/message/reply", { method: "POST", body: JSON.stringify(body) });
@@ -51,9 +53,17 @@ export async function lineReplyText(replyToken: string, text: string) {
   await lineReplyMessages(replyToken, [{ type: "text", text }]);
 }
 
-/** ========== Promo Flex (ตัวอย่างปรับได้) ========== */
+/** ✅ NEW: Push message (ส่งหา userId โดยตรง ไม่ต้องมี replyToken) */
+export async function linePush(to: string, messages: LineMessage[]) {
+  const body: PushBody = { to, messages };
+  await lineFetch("/v2/bot/message/push", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** ========== Flex Templates ========== */
+
+/** Promo Flex */
 export function buildPromoFlex(opts?: { ctaUrl?: string }): LineMessage {
-  const url = opts?.ctaUrl ?? "https://mechoke.com";
+  const url = opts?.ctaUrl ?? "https://example.com/signup";
   return {
     type: "flex",
     altText: "โปรโมชันล่าสุด",
@@ -86,7 +96,7 @@ export function buildPromoFlex(opts?: { ctaUrl?: string }): LineMessage {
   };
 }
 
-/** ========== Credit Help Flex (ตัวอย่าง) ========== */
+/** Credit Help Flex */
 export function buildCreditHelpFlex(): LineMessage {
   return {
     type: "flex",
@@ -109,7 +119,7 @@ export function buildCreditHelpFlex(): LineMessage {
   };
 }
 
-/** ========== Lucky News Flex (Carousel) ========== */
+/** Lucky News Flex (Carousel) */
 const NEWS_FALLBACK_IMAGE =
   process.env.NEWS_FALLBACK_IMAGE ||
   "https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=1200&auto=format&fit=crop";
@@ -128,7 +138,12 @@ export function buildLuckyNewsFlex(
     const sub = [
       it.source ? it.source : null,
       it.publishedAt
-        ? new Date(it.publishedAt).toLocaleString("th-TH", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+        ? new Date(it.publishedAt).toLocaleString("th-TH", {
+            hour: "2-digit",
+            minute: "2-digit",
+            day: "2-digit",
+            month: "2-digit",
+          })
         : "ล่าสุด",
     ]
       .filter(Boolean)
@@ -153,7 +168,15 @@ export function buildLuckyNewsFlex(
         layout: "vertical",
         spacing: "sm",
         contents: [
-          { type: "button", style: "primary", action: { type: "uri", label: "อ่านข่าว", uri: it.url || "https://google.com/search?q=เลขเด็ด" } },
+          {
+            type: "button",
+            style: "primary",
+            action: {
+              type: "uri",
+              label: "อ่านข่าว",
+              uri: it.url || "https://google.com/search?q=เลขเด็ด",
+            },
+          },
         ],
       },
     };

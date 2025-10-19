@@ -1,0 +1,25 @@
+{
+    "git": {
+      "deploymentEnabled": {
+        "main": true
+      }
+    },
+    "functions": {
+      "app/api/line/webhook/route.ts": {
+        "memory": 1024,
+        "maxDuration": 10
+      },
+      "app/api/lucky-feed/route.ts": {
+        "runtime": "edge",
+        "maxDuration": 5
+      }
+    },
+    "headers": [
+      {
+        "source": "/api/(.*)",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-store" }
+        ]
+      }
+    ]
+  }
