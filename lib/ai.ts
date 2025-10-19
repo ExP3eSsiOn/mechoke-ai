@@ -1,47 +1,84 @@
 // lib/ai.ts
-import OpenAI from "openai";
+export type LuckyItem = {
+  title: string;
+  url: string;
+  imageUrl?: string | null;
+  source?: string | null;
+  publishedAt?: string | null; // ISO หรือรูปแบบสตริงเดิม
+};
 
-const BRAND_NAME = process.env.BRAND_NAME ?? "มีโชคดอทคอม";
-const LINE_HANDLE = process.env.LINE_OA_HANDLE ?? "@mechoke";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
-const SIGNUP_URL = process.env.SIGNUP_URL || "https://www.mechoke.com/";
-const LINE_ISSUE_URL = process.env.LINE_ISSUE_URL || "https://lin.ee/t52Y9Nm";
-const TELEGRAM_URL = process.env.TELEGRAM_URL || "https://t.me/+BR_qCVWcre40NTc9";
-
-export const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-
-function buildSystemPrompt() {
-  const base = `
-คุณเป็น "แอดมินผู้หญิง" ของแบรนด์ ${BRAND_NAME} (LINE OA ${LINE_HANDLE})
-โทนเสียง: สุภาพ อ่อนโยน มืออาชีพ ใช้คำลงท้าย "คะ/ค่ะ" ให้เหมาะสมทุกข้อความ
-สไตล์: กระชับ เข้าใจง่าย ใช้อีโมจิเล็กน้อย ไม่เยอะเกินไป
-
-หัวข้อที่ตอบได้:
-• โปรโมชัน/เช็คอิน 7 วัน ฝากวันละ 300 เลือกรับของแถม 1 ชิ้น
-• วิธีสมัคร/ลิงก์สมัคร (${SIGNUP_URL})
-• ฝาก–ถอน/ขั้นต่ำ/วิธีใช้งาน
-• ปัญหาเครดิตไม่เข้า → ขอ "ยูสเซอร์/เบอร์สมัคร" + "เวลา/ยอดฝาก" + "ธนาคาร/สลิปย่อ"
-• เวลาออกผล/ปิดรับ (ตอบอย่างระมัดระวัง ถ้าไม่ชัดเจนให้ชวนสอบถามแอดมิน)
-• ช่องทางติดต่อ: แจ้งปัญหา (${LINE_ISSUE_URL}), กลุ่มเทเลแกรมผลรางวัล (${TELEGRAM_URL})
-
-กติกา:
-- ถ้าคำถามอยู่นอกขอบเขต ให้ขออภัยและแนะนำติดต่อแอดมินที่ ${LINE_ISSUE_URL} ค่ะ
-- ถ้าเป็นเรื่องสมัคร/เริ่มใช้งาน ให้แนบลิงก์สมัคร ${SIGNUP_URL} ค่ะ
-- ปิดท้ายเมื่อเหมาะสมด้วยการชวนติดต่อ LINE OA หรือดูประกาศผลในเทเลแกรม
-
-ตอบเป็นภาษาไทยเท่านั้น
-  `.trim();
-  return base;
+function withTimeout(p: Promise<Response>, ms = 8000) {
+  return Promise.race([
+    p,
+    new Promise<Response>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
+  ]) as Promise<Response>;
 }
 
-export async function askAI(userMsg: string): Promise<string> {
-  const ai = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.35,
-    messages: [
-      { role: "system", content: buildSystemPrompt() },
-      { role: "user", content: userMsg },
-    ],
-  });
-  return ai.choices[0]?.message?.content?.trim() || "ขออภัยค่ะ ระบบขัดข้อง ลองใหม่อีกครั้งนะคะ 🙏";
+async function fetchJSON(url: string) {
+  const res = await withTimeout(fetch(url, { cache: "no-store" }));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * fetchLuckyNews
+ * ลำดับแหล่งข้อมูล:
+ *  1) LUCKY_FEED_URL (ภายนอก/ของคุณ)
+ *  2) NEXT_PUBLIC_BASE_URL + /api/lucky-feed (route ภายในโปรเจกต์)
+ */
+export async function fetchLuckyNews(limit = 5): Promise<LuckyItem[]> {
+  const items: LuckyItem[] = [];
+
+  // 1) External JSON feed
+  const FEED = process.env.LUCKY_FEED_URL?.trim();
+  if (FEED) {
+    try {
+      const data = await fetchJSON(FEED);
+      const arr: any[] = data?.items || data?.articles || data || [];
+      for (const it of arr) {
+        if (!it) continue;
+        items.push({
+          title: String(it.title ?? it.headline ?? "").trim(),
+          url: String(it.url ?? it.link ?? "").trim(),
+          imageUrl: it.imageUrl ?? it.image ?? it.thumbnail ?? null,
+          source: it.source ?? it.site ?? null,
+          publishedAt: it.publishedAt ?? it.pubDate ?? null,
+        });
+        if (items.length >= limit) break;
+      }
+    } catch {
+      // เงียบไว้ แล้วลองแหล่งถัดไป
+    }
+  }
+
+  // 2) Internal API: /api/lucky-feed
+  if (items.length < limit) {
+    const BASE = (process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+    if (BASE) {
+      try {
+        const data = await fetchJSON(`${BASE}/api/lucky-feed?limit=${limit}`);
+        const arr: any[] = data?.items || [];
+        for (const it of arr) {
+          items.push({
+            title: String(it.title ?? "").trim(),
+            url: String(it.url ?? it.link ?? "").trim(),
+            imageUrl: it.imageUrl ?? it.image ?? it.thumbnail ?? null,
+            source: it.source ?? it.site ?? null,
+            publishedAt: it.publishedAt ?? it.pubDate ?? null,
+          });
+          if (items.length >= limit) break;
+        }
+      } catch {
+        /* no-op */
+      }
+    }
+  }
+
+  // กรองของเสีย
+  const uniq = new Map<string, LuckyItem>();
+  for (const it of items) {
+    if (!it?.title || !it?.url) continue;
+    uniq.set(it.url, it);
+  }
+  return Array.from(uniq.values()).slice(0, limit);
 }
