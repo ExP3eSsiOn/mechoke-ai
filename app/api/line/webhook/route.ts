@@ -29,7 +29,7 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
 
   // ขอ "รูปโปร" เป็น Flex
   if (/(รูปโปร|โปรภาพ|promotion image|โปรโมชั่นแบบรูป)/i.test(t)) {
-    return [buildPromoFlex({ ctaUrl: "https://your-signup-link.example" })];
+    return [buildPromoFlex({ ctaUrl: "https://mechoke.com" })];
   }
 
   // โปรโมชัน
@@ -63,7 +63,7 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
         type: "text",
         text: [
           "สมัครสมาชิกได้เลยค่ะ ✨",
-          "ลิงก์สมัคร: https://your-signup-link.example (ใส่ลิงก์จริงของระบบ)",
+          "ลิงก์สมัคร: https://mechoke.com (ใส่ลิงก์จริงของระบบ)",
           "ฝากครั้งแรกวันนี้ รับของแถมฟรีทันทีค่ะ 🎁",
         ].join("\n"),
       },

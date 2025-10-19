@@ -63,7 +63,7 @@ export async function linePush(to: string, messages: LineMessage[]) {
 
 /** Promo Flex */
 export function buildPromoFlex(opts?: { ctaUrl?: string }): LineMessage {
-  const url = opts?.ctaUrl ?? "https://example.com/signup";
+  const url = opts?.ctaUrl ?? "https://mechoke.com";
   return {
     type: "flex",
     altText: "โปรโมชันล่าสุด",
@@ -71,7 +71,7 @@ export function buildPromoFlex(opts?: { ctaUrl?: string }): LineMessage {
       type: "bubble",
       hero: {
         type: "image",
-        url: process.env.PROMO_IMAGE_URL || "https://images.unsplash.com/photo-1554200876-56c2f25224fa?w=1200&q=80",
+        url: process.env.PROMO_IMAGE_URL || "http://chokede.com/line.jpg",
         size: "full",
         aspectMode: "cover",
         aspectRatio: "20:13",

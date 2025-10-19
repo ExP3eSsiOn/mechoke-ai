@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   if (typeof message === "string" && message.trim()) {
     await linePush(userId, [{ type: "text", text: message }]);
   } else {
-    await linePush(userId, [buildPromoFlex({ ctaUrl: "https://your-signup-link.example" })]);
+    await linePush(userId, [buildPromoFlex({ ctaUrl: "https://mechoke.com" })]);
   }
 
   return NextResponse.json({ ok: true });

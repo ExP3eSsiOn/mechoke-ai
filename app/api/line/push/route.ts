@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.promo) {
-      msgs.push(buildPromoFlex({ ctaUrl: "https://your-signup-link.example" }));
+      msgs.push(buildPromoFlex({ ctaUrl: "https://mechoke.com" }));
     }
 
     if (body.luckyNews) {
