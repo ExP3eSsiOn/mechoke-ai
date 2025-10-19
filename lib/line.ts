@@ -203,7 +203,7 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
     };
   });
 
-  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (ลบ color ออก + ใส่ wrap ครบ ป้องกัน TS error)
+  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (เพิ่ม weight ให้ตัวที่สอง ป้องกัน TS union แคบ)
   if (bubbles.length === 0) {
     bubbles.push({
       type: "bubble",
@@ -212,7 +212,7 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
         layout: "vertical",
         contents: [
           { type: "text", text: "ยังไม่มีข่าวอัปเดตในขณะนี้ค่ะ", weight: "bold", size: "lg", wrap: true },
-          { type: "text", text: "ลองใหม่อีกครั้ง หรือพิมพ์: โปรวันนี้ เพื่อดูโปรล่าสุด", size: "sm", wrap: true },
+          { type: "text", text: "ลองใหม่อีกครั้ง หรือพิมพ์: โปรวันนี้ เพื่อดูโปรล่าสุด", weight: "regular", size: "sm", wrap: true },
         ],
       },
       footer: {
