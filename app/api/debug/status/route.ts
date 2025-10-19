@@ -9,11 +9,11 @@ type CheckResult = {
   extra?: Record<string, any>;
 };
 
-function bool(v: any) {
+function has(v?: string | null) {
   return !!(v && String(v).trim().length > 0);
 }
 
-async function safeFetch(input: RequestInfo, init?: RequestInit, timeoutMs = 5000) {
+async function safeFetch(input: RequestInfo, init?: RequestInit, timeoutMs = 8000) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
   try {
@@ -24,9 +24,17 @@ async function safeFetch(input: RequestInfo, init?: RequestInit, timeoutMs = 500
   }
 }
 
+// ดึง origin ปัจจุบัน เพื่อนำไปเรียก /api/debug/line (Node runtime)
+function getOrigin(req: Request) {
+  const h = new Headers((req as any).headers || {});
+  const proto = h.get("x-forwarded-proto") || "https";
+  const host = h.get("x-forwarded-host") || h.get("host");
+  return host ? `${proto}://${host}` : "";
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const live = url.searchParams.get("live") === "1"; // เพิ่ม ?live=1 เพื่อทดสอบต่อภายนอกแบบเบาๆ
+  const live = url.searchParams.get("live") === "1";
 
   const ts = new Date().toISOString();
   const brandName = process.env.BRAND_NAME ?? "มีโชคดอทคอม";
@@ -38,24 +46,25 @@ export async function GET(req: Request) {
   const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
   const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
 
-  // --- Checks ---
+  // ---- default checks (configured only) ----
   const checks: Record<string, CheckResult> = {
-    openai: { configured: bool(OPENAI_API_KEY) },
-    newsapi: { configured: bool(NEWSAPI_KEY) },
-    luckyFeed: { configured: bool(LUCKY_FEED_URL) },
-    lineWebhook: { configured: bool(LINE_CHANNEL_ACCESS_TOKEN) && bool(LINE_CHANNEL_SECRET) },
+    openai: { configured: has(OPENAI_API_KEY) },
+    newsapi: { configured: has(NEWSAPI_KEY) },
+    luckyFeed: { configured: has(LUCKY_FEED_URL) },
+    lineWebhook: { configured: has(LINE_CHANNEL_ACCESS_TOKEN) && has(LINE_CHANNEL_SECRET) },
     brand: { configured: true, extra: { brandName, lineHandle } },
   };
 
+  // ---- live checks (on demand) ----
   if (live) {
-    // OpenAI live check: เรียก /v1/models แบบเบาๆ
+    // OpenAI: ขอ /v1/models เพื่อยืนยัน key
     if (checks.openai.configured) {
       try {
-        const res = await safeFetch("https://api.openai.com/v1/models", {
+        const r = await safeFetch("https://api.openai.com/v1/models", {
           headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
         });
-        checks.openai.live = res.ok;
-        if (!res.ok) checks.openai.error = `HTTP ${res.status}`;
+        checks.openai.live = r.ok;
+        if (!r.ok) checks.openai.error = `HTTP ${r.status}`;
       } catch (e: any) {
         checks.openai.live = false;
         checks.openai.error = String(e?.message || e);
@@ -65,15 +74,15 @@ export async function GET(req: Request) {
       checks.openai.note = "ไม่ตั้งค่า OPENAI_API_KEY";
     }
 
-    // NewsAPI live check: หัวข่าวไทย 1 รายการ
+    // NewsAPI: พาดหัวไทย 1 ชิ้น
     if (checks.newsapi.configured) {
       try {
         const u = new URL("https://newsapi.org/v2/top-headlines");
         u.searchParams.set("country", "th");
         u.searchParams.set("pageSize", "1");
-        const res = await safeFetch(u.toString(), { headers: { "X-Api-Key": NEWSAPI_KEY } });
-        checks.newsapi.live = res.ok;
-        if (!res.ok) checks.newsapi.error = `HTTP ${res.status}`;
+        const r = await safeFetch(u.toString(), { headers: { "X-Api-Key": NEWSAPI_KEY } });
+        checks.newsapi.live = r.ok;
+        if (!r.ok) checks.newsapi.error = `HTTP ${r.status}`;
       } catch (e: any) {
         checks.newsapi.live = false;
         checks.newsapi.error = String(e?.message || e);
@@ -82,19 +91,19 @@ export async function GET(req: Request) {
       checks.newsapi.note = "ไม่ตั้งค่า NEWSAPI_KEY (ไม่จำเป็น หากใช้ RSS fallback หรือ LUCKY_FEED_URL)";
     }
 
-    // LUCKY_FEED_URL live check: คาดหวัง JSON array
+    // LuckyFeed: ต้องเป็น JSON array
     if (checks.luckyFeed.configured) {
       try {
-        const res = await safeFetch(LUCKY_FEED_URL);
-        if (!res.ok) {
+        const r = await safeFetch(LUCKY_FEED_URL);
+        if (!r.ok) {
           checks.luckyFeed.live = false;
-          checks.luckyFeed.error = `HTTP ${res.status}`;
+          checks.luckyFeed.error = `HTTP ${r.status}`;
         } else {
-          const data = await res.json().catch(() => null);
+          const data = await r.json().catch(() => null);
           const ok = Array.isArray(data);
           checks.luckyFeed.live = ok;
           if (!ok) checks.luckyFeed.error = "ไม่ใช่ JSON array";
-          if (ok) checks.luckyFeed.extra = { items: data.slice?.(0, 2) ?? [] };
+          if (ok) checks.luckyFeed.extra = { itemsPreview: data.slice?.(0, 2) ?? [] };
         }
       } catch (e: any) {
         checks.luckyFeed.live = false;
@@ -104,24 +113,25 @@ export async function GET(req: Request) {
       checks.luckyFeed.note = "ไม่ตั้งค่า LUCKY_FEED_URL ก็ได้ ระบบจะ fallback RSS อัตโนมัติ";
     }
 
-    // LINE live check: เรียก /v2/bot/info เพื่อตรวจ token
+    // LINE: proxy ไป Node runtime checker ที่ /api/debug/line
     if (checks.lineWebhook.configured) {
       try {
-        const res = await safeFetch("https://api.line.me/v2/bot/info", {
-          headers: { Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
-        });
-        checks.lineWebhook.live = res.ok;
-        if (!res.ok) {
-          checks.lineWebhook.error = `HTTP ${res.status}`;
+        const origin = getOrigin(req);
+        if (!origin) {
+          checks.lineWebhook.live = false;
+          checks.lineWebhook.error = "no origin";
         } else {
-          const info = await res.json().catch(() => null);
-          checks.lineWebhook.extra = info ? { basicId: info.basicId, userId: info.userId, displayName: info.displayName } : undefined;
+          const r = await safeFetch(`${origin}/api/debug/line`, { cache: "no-store" }, 10000);
+          const j = await r.json().catch(() => ({}));
+          checks.lineWebhook.live = r.ok && !!j?.ok;
+          if (!checks.lineWebhook.live) checks.lineWebhook.error = `status ${r.status}`;
+          if (j?.data) checks.lineWebhook.extra = j.data;
         }
+        checks.lineWebhook.note = "ตรวจผ่าน Node runtime ที่ /api/debug/line";
       } catch (e: any) {
         checks.lineWebhook.live = false;
         checks.lineWebhook.error = String(e?.message || e);
       }
-      checks.lineWebhook.note = "เรียก /v2/bot/info เพื่อตรวจสอบ Channel access token";
     } else {
       checks.lineWebhook.note = "กรุณาตั้งค่า LINE_CHANNEL_ACCESS_TOKEN และ LINE_CHANNEL_SECRET";
     }
@@ -136,6 +146,9 @@ export async function GET(req: Request) {
   };
 
   return new Response(JSON.stringify(body, null, 2), {
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
   });
 }
