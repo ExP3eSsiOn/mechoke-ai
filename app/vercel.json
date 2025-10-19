@@ -20,6 +20,10 @@
       "app/api/debug/line/route.ts": {
         "memory": 256,
       "maxDuration": 10
+      },
+      "app/api/debug/users/route.ts": {
+        "runtime": "nodejs",
+        "maxDuration": 10
       }
     },
     "headers": [

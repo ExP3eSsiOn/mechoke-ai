@@ -7,34 +7,31 @@ import {
   buildPromoFlex,
   buildCreditHelpFlex,
   LineMessage,
-  buildLuckyNewsFlex,
 } from "@/lib/line";
 import { buildPromoReplyFromText, promoSummary } from "@/lib/promos";
-import { findTimesByText, formatDrawList } from "@/lib/lotto-times";
-import { answerLotteryAI, fetchLuckyNews } from "@/lib/ai";
+import { askAI } from "@/lib/ai";
+import { trackUserId } from "@/lib/users";
 
-export const runtime = "nodejs"; // HMAC ต้อง Node runtime
+export const runtime = "nodejs";
 
 const BRAND_NAME = process.env.BRAND_NAME ?? "มีโชคดอทคอม";
 const LINE_HANDLE = process.env.LINE_OA_HANDLE ?? "@mechoke";
+const SIGNUP_URL = process.env.SIGNUP_URL || "https://www.mechoke.com/";
+const LINE_ISSUE_URL = process.env.LINE_ISSUE_URL || "https://lin.ee/t52Y9Nm";
+const TELEGRAM_URL = process.env.TELEGRAM_URL || "https://t.me/+BR_qCVWcre40NTc9";
 
-/** ---------------- Quick Router ---------------- */
+// ---------- Router (Quick answers – female tone) ----------
 function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
-  const t = (text || "").toLowerCase().trim();
+  const t = text.toLowerCase().trim();
 
-  // ข่าวเลขเด็ดล่าสุด → ให้ handler หลักไปดึงข่าวแล้วส่ง Flex
-  if (/(ข่าวหวย|ข่าวเลขเด็ด|เลขเด็ดจากข่าว|ข่าวล่าสุด.*(หวย|เลข)|ข่าว.*หวย|ข่าวหวยวันนี้)/i.test(t)) {
-    return [{ type: "text", text: "__INTENT_NEWS__" } as any];
-  }
-
-  // ขอ "รูปโปร" เป็น Flex
+  // รูปโปร (Flex)
   if (/(รูปโปร|โปรภาพ|promotion image|โปรโมชั่นแบบรูป)/i.test(t)) {
-    return [buildPromoFlex({ ctaUrl: "https://mechoke.com" })];
+    return [buildPromoFlex({ ctaUrl: SIGNUP_URL })];
   }
 
   // โปรโมชัน
   if (/(โปร|promotion|โปรวันนี้|โปร พิเศษ|ฝาก 300|ของแถม|เช็คอิน|vip)/i.test(t)) {
-    if (/(โปรวันนี้|promotion|โปร พิเศษ|โปร ทั้งหมด|มีโปรอะไรบ้าง)/i.test(t)) {
+    if (/(โปรวันนี้|มีโปรอะไรบ้าง|promotion)/i.test(t)) {
       return [{ type: "text", text: promoSummary() }];
     }
     const reply = buildPromoReplyFromText(text);
@@ -49,8 +46,8 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
         type: "text",
         text: [
           "ขออภัยในความไม่สะดวกนะคะ 🙏",
-          "รบกวนแจ้ง 'ยูสเซอร์/เบอร์ที่สมัคร' + 'เวลา/ยอดฝาก' + 'ธนาคาร/สลิปย่อ'",
-          "แอดมินจะตรวจสอบและอัปเดตให้โดยเร็วค่ะ 💬",
+          "รบกวนแจ้ง 'ยูสเซอร์/เบอร์สมัคร' + 'เวลา/ยอดฝาก' + 'ธนาคาร/สลิปย่อ' ค่ะ",
+          `แจ้งปัญหา: ${LINE_ISSUE_URL}`,
         ].join("\n"),
       },
     ];
@@ -63,7 +60,7 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
         type: "text",
         text: [
           "สมัครสมาชิกได้เลยค่ะ ✨",
-          "ลิงก์สมัคร: https://mechoke.com (ใส่ลิงก์จริงของระบบ)",
+          `ลิงก์สมัคร: ${SIGNUP_URL}`,
           "ฝากครั้งแรกวันนี้ รับของแถมฟรีทันทีค่ะ 🎁",
         ].join("\n"),
       },
@@ -75,35 +72,33 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
     return [{ type: "text", text: "ถอนได้ขั้นต่ำ 100 บาทค่ะ ระบบอัตโนมัติ 24 ชม. ⏱️" }];
   }
 
-  // เวลาออกผล/ปิดรับ
-  if (/(เวลา|ออกผล|ปิดรับ|เปิดปิด|ตาราง).*(หวย|ลาว|ฮานอย|หุ้น|รัฐบาล|ยี่กี|ต่างประเทศ|ทั้งหมด)?/i.test(t)) {
-    const list = findTimesByText(text);
-    if (list.length) {
-      return [{ type: "text", text: formatDrawList(list) }];
-    }
+  // เวลาออกผล/ปิดรับ (ข้อความตัวอย่าง)
+  if (/(หวย|ลาว|ฮานอย|หุ้น|เวลา|ออกผล|ปิดรับ)/i.test(t)) {
     return [
       {
         type: "text",
         text: [
-          "พิมพ์ชื่อกลุ่มที่ต้องการดูเวลาได้เลยค่ะ เช่น:",
-          "• เวลาออกผล ลาว",
-          "• เวลาออกผล ฮานอย",
-          "• เวลาออกผล หุ้นไทย / หุ้นต่างประเทศ",
-          "หรือพิมพ์: เวลาออกผลทั้งหมด",
+          "⏰ เวลาออกผล/ปิดรับ (ตัวอย่าง) ค่ะ",
+          "• ลาวพิเศษเที่ยง 12:30 น.",
+          "• ลาวสบายดี 15:00 น.",
+          "• ลาวก้าวหน้า 17:30 น.",
+          "• ฮานอยปกติ 18:30 น.",
+          "• หุ้นไทยรอบบ่าย 16:30 น.",
+          `ประกาศผล: ${TELEGRAM_URL}`,
+          `สอบถามเพิ่มเติมใน LINE OA ${LINE_HANDLE} ได้เลยค่ะ`,
         ].join("\n"),
       },
     ];
   }
 
-  return null; // ไม่ตรง pattern → ให้ AI ตอบ
+  return null;
 }
 
-/** ---------------- POST: LINE Webhook ---------------- */
+// ---------- POST: LINE Webhook ----------
 export async function POST(req: NextRequest) {
   const signature = req.headers.get("x-line-signature") || undefined;
   const rawBody = await req.text();
 
-  // prod: ตรวจลายเซ็น / dev: ข้ามเพื่อเทสง่าย
   const isDev = process.env.NODE_ENV !== "production";
   if (!isDev) {
     const ok = verifyLineSignature(rawBody, signature);
@@ -115,57 +110,39 @@ export async function POST(req: NextRequest) {
 
   for (const e of events) {
     try {
+      await trackUserId(e?.source?.userId);
+
       if (e.type !== "message" || e.message?.type !== "text") continue;
 
       const userText: string = e.message.text || "";
-      console.log("[webhook] text:", userText);
-
       let msgs = routeQuickAnswerToMessages(userText);
 
-      // Intent ข่าว → ดึงข่าว & ส่ง Flex
-      if (msgs && msgs.length === 1 && (msgs[0] as any).text === "__INTENT_NEWS__") {
-        const news = await fetchLuckyNews();
-        if (news.length > 0) {
-          console.log("[reply] via Flex News");
-          await lineReplyMessages(e.replyToken, [buildLuckyNewsFlex(news)]);
-          continue;
-        } else {
-          console.log("[reply] news empty → AI text");
-          const aiText = await answerLotteryAI("เลขเด็ดจากข่าวล่าสุด", new Date());
-          await lineReplyMessages(e.replyToken, [{ type: "text", text: aiText }]);
-          continue;
-        }
+      if (!msgs) {
+        const aiText = await askAI(userText);
+        msgs = [{ type: "text", text: aiText }];
       }
 
-      // Router ตอบปกติ
-      if (msgs && msgs.length > 0) {
-        console.log("[reply] via Router/Intent");
-        await lineReplyMessages(e.replyToken, msgs);
-        continue;
-      }
-
-      // AI fallback (ข่าว/โซเชียล/ฝัน/มงคล/ทั่วไป)
-      const aiText = await answerLotteryAI(userText, new Date());
-      console.log("[reply] via AI");
-      msgs = [{ type: "text", text: aiText }];
       await lineReplyMessages(e.replyToken, msgs);
     } catch (err) {
-      console.error("[webhook error]", err);
       try {
         await lineReplyText(e.replyToken, "ขออภัยค่ะ ระบบขัดข้องชั่วคราว ลองพิมพ์อีกครั้งได้เลยนะคะ 🙏");
       } catch {}
+      console.error("[webhook error]", err);
     }
   }
 
   return NextResponse.json({ ok: true });
 }
 
-/** ---------------- GET: Health ---------------- */
+// ---------- GET: Health ----------
 export function GET() {
   return NextResponse.json({
     ok: true,
     brand: BRAND_NAME,
     handle: LINE_HANDLE,
-    hint: "LINE จะเรียก endpoint นี้ด้วย POST เท่านั้น",
+    signup: SIGNUP_URL,
+    issue: LINE_ISSUE_URL,
+    telegram: TELEGRAM_URL,
+    hint: "LINE จะเรียก endpoint นี้ด้วย POST เท่านั้นค่ะ",
   });
 }
