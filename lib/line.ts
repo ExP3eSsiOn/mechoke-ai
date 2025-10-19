@@ -203,13 +203,14 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
     };
   });
 
-  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (เพิ่ม weight ให้ตัวที่สอง ป้องกัน TS union แคบ)
+  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (เติม spacing: "sm" + ใส่ weight ให้ตัวที่สอง)
   if (bubbles.length === 0) {
     bubbles.push({
       type: "bubble",
       body: {
         type: "box",
         layout: "vertical",
+        spacing: "sm",
         contents: [
           { type: "text", text: "ยังไม่มีข่าวอัปเดตในขณะนี้ค่ะ", weight: "bold", size: "lg", wrap: true },
           { type: "text", text: "ลองใหม่อีกครั้ง หรือพิมพ์: โปรวันนี้ เพื่อดูโปรล่าสุด", weight: "regular", size: "sm", wrap: true },
@@ -218,6 +219,7 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
       footer: {
         type: "box",
         layout: "vertical",
+        spacing: "sm",
         contents: [
           { type: "button", style: "primary", action: { type: "uri", label: "สมัครสมาชิก", uri: SIGNUP_URL } },
         ],
