@@ -106,7 +106,7 @@ export function buildPromoFlex(opts?: { ctaUrl?: string }): LineFlexMessage {
       type: "bubble",
       hero: {
         type: "image",
-        url: heroUrl, // ✅ ผ่านเงื่อนไข https:// เสมอ
+        url: heroUrl, // ✅ บังคับ https เสมอ
         size: "full",
         aspectRatio: "16:9",
         aspectMode: "cover",
@@ -203,10 +203,18 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
     };
   });
 
-  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (เติม spacing: "sm" + ใส่ weight ให้ตัวที่สอง)
+  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (ใส่ hero ให้โครงสร้างเหมือนกันทั้งหมด ป้องกัน TS union ฟ้อง)
   if (bubbles.length === 0) {
+    const fallbackHero = safeHttpsUrl(PROMO_IMG_URL); // ใช้รูปโปรเป็น hero
     bubbles.push({
       type: "bubble",
+      hero: {
+        type: "image",
+        url: fallbackHero,
+        size: "full",
+        aspectRatio: "20:13",
+        aspectMode: "cover",
+      },
       body: {
         type: "box",
         layout: "vertical",
