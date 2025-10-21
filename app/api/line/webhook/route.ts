@@ -12,26 +12,23 @@ import { buildPromoReplyFromText, promoSummary } from "@/lib/promos";
 import { askAI } from "@/lib/ai";
 import { trackUserId } from "@/lib/users";
 
-export const runtime = "nodejs";
+export const runtime = "nodejs"; // ต้องใช้ Node เพื่อ verify HMAC
 
 const BRAND_NAME = process.env.BRAND_NAME ?? "มีโชคดอทคอม";
 const LINE_HANDLE = process.env.LINE_OA_HANDLE ?? "@mechoke";
-const SIGNUP_URL = process.env.SIGNUP_URL || "https://www.mechoke.com/";
-const LINE_ISSUE_URL = process.env.LINE_ISSUE_URL || "https://lin.ee/t52Y9Nm";
-const TELEGRAM_URL = process.env.TELEGRAM_URL || "https://t.me/+BR_qCVWcre40NTc9";
 
-// ---------- Router (Quick answers – female tone) ----------
+/** ---------------- Quick Router: คืนเป็น array ของข้อความ/เฟล็กซ์ ---------------- */
 function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
-  const t = text.toLowerCase().trim();
+  const t = (text || "").trim().toLowerCase();
 
-  // รูปโปร (Flex)
+  // ขอ "รูปโปร" → ส่ง Flex โปรภาพ
   if (/(รูปโปร|โปรภาพ|promotion image|โปรโมชั่นแบบรูป)/i.test(t)) {
-    return [buildPromoFlex({ ctaUrl: SIGNUP_URL })];
+    return [buildPromoFlex({ ctaUrl: process.env.SIGNUP_URL })];
   }
 
   // โปรโมชัน
   if (/(โปร|promotion|โปรวันนี้|โปร พิเศษ|ฝาก 300|ของแถม|เช็คอิน|vip)/i.test(t)) {
-    if (/(โปรวันนี้|มีโปรอะไรบ้าง|promotion)/i.test(t)) {
+    if (/(โปรวันนี้|โปร พิเศษ|มีโปรอะไรบ้าง|promotion)/i.test(t)) {
       return [{ type: "text", text: promoSummary() }];
     }
     const reply = buildPromoReplyFromText(text);
@@ -39,15 +36,15 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
   }
 
   // เครดิตไม่เข้า
-  if (/(เครดิต|เงิน|ยอด).*(ไม่เข้า|ไม่มา|หาย)/i.test(t)) {
+  if (/(เครดิต|เงิน|ยอด).*(ไม่เข้า|ไม่มา|หาย|ค้าง)/i.test(t)) {
     return [
       buildCreditHelpFlex(),
       {
         type: "text",
         text: [
-          "ขออภัยในความไม่สะดวกนะคะ 🙏",
-          "รบกวนแจ้ง 'ยูสเซอร์/เบอร์สมัคร' + 'เวลา/ยอดฝาก' + 'ธนาคาร/สลิปย่อ' ค่ะ",
-          `แจ้งปัญหา: ${LINE_ISSUE_URL}`,
+          "น้องขออภัยในความไม่สะดวกนะคะ 🙏",
+          "รบกวนแจ้ง 'ยูสเซอร์/เบอร์ที่สมัคร' + 'เวลา/ยอดฝาก' + 'ธนาคาร/สลิปย่อ'",
+          `แอดมินจะตรวจสอบและอัปเดตให้โดยเร็วค่ะ ติดต่อ ${LINE_HANDLE}`,
         ].join("\n"),
       },
     ];
@@ -60,7 +57,7 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
         type: "text",
         text: [
           "สมัครสมาชิกได้เลยค่ะ ✨",
-          `ลิงก์สมัคร: ${SIGNUP_URL}`,
+          `ลิงก์สมัคร: ${process.env.SIGNUP_URL || "https://www.mechoke.com/"}`,
           "ฝากครั้งแรกวันนี้ รับของแถมฟรีทันทีค่ะ 🎁",
         ].join("\n"),
       },
@@ -72,33 +69,33 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
     return [{ type: "text", text: "ถอนได้ขั้นต่ำ 100 บาทค่ะ ระบบอัตโนมัติ 24 ชม. ⏱️" }];
   }
 
-  // เวลาออกผล/ปิดรับ (ข้อความตัวอย่าง)
+  // เวลาออกผล/ปิดรับ (สรุปสั้น)
   if (/(หวย|ลาว|ฮานอย|หุ้น|เวลา|ออกผล|ปิดรับ)/i.test(t)) {
     return [
       {
         type: "text",
         text: [
-          "⏰ เวลาออกผล/ปิดรับ (ตัวอย่าง) ค่ะ",
+          "⏰ เวลาออกผล (ตัวอย่าง):",
           "• ลาวพิเศษเที่ยง 12:30 น.",
           "• ลาวสบายดี 15:00 น.",
           "• ลาวก้าวหน้า 17:30 น.",
           "• ฮานอยปกติ 18:30 น.",
           "• หุ้นไทยรอบบ่าย 16:30 น.",
-          `ประกาศผล: ${TELEGRAM_URL}`,
-          `สอบถามเพิ่มเติมใน LINE OA ${LINE_HANDLE} ได้เลยค่ะ`,
+          `สอบถามเพิ่มเติมที่ ${LINE_HANDLE}`,
         ].join("\n"),
       },
     ];
   }
 
-  return null;
+  return null; // ไม่เข้า Intent → ไป Fallback (ChatGPT)
 }
 
-// ---------- POST: LINE Webhook ----------
+/** ---------------- POST: LINE Webhook ---------------- */
 export async function POST(req: NextRequest) {
   const signature = req.headers.get("x-line-signature") || undefined;
   const rawBody = await req.text();
 
+  // Production: ตรวจลายเซ็น, Dev: ข้ามเพื่อเทสง่าย
   const isDev = process.env.NODE_ENV !== "production";
   if (!isDev) {
     const ok = verifyLineSignature(rawBody, signature);
@@ -110,22 +107,45 @@ export async function POST(req: NextRequest) {
 
   for (const e of events) {
     try {
-      await trackUserId(e?.source?.userId);
+      // เก็บ userId ลงระบบ (สำหรับหน้า /push หรือ /api/debug/users)
+      const uid =
+        e?.source?.userId || e?.source?.roomId || e?.source?.groupId || undefined;
+      if (uid) trackUserId(uid).catch(() => {});
 
+      // รับเฉพาะ text message
       if (e.type !== "message" || e.message?.type !== "text") continue;
 
       const userText: string = e.message.text || "";
-      let msgs = routeQuickAnswerToMessages(userText);
+      console.info("[webhook] text:", userText);
 
-      if (!msgs) {
-        const aiText = await askAI(userText);
-        msgs = [{ type: "text", text: aiText }];
+      // 1) ตอบตาม Intent router ก่อน
+      let msgs = routeQuickAnswerToMessages(userText);
+      if (msgs && msgs.length > 0) {
+        console.info("[reply] via Router/Intent");
+        await lineReplyMessages(e.replyToken, msgs);
+        continue;
       }
 
-      await lineReplyMessages(e.replyToken, msgs);
+      // 2) Fallback → ChatGPT (ตอบทุกคำถามที่ไม่เข้า Intent)
+      console.info("[reply] via ChatGPT Fallback");
+      const aiText = await askAI(userText, {
+        brandName: BRAND_NAME,
+        lineHandle: LINE_HANDLE,
+      });
+
+      // กัน empty
+      const finalText =
+        (aiText && aiText.trim()) ||
+        "น้องขออภัยค่ะ ระบบขัดข้องชั่วคราว ลองพิมพ์อีกครั้งได้เลยนะคะ 🙏";
+
+      await lineReplyText(e.replyToken, finalText);
     } catch (err) {
+      // พยายามแจ้งลูกค้าให้สุภาพที่สุด
       try {
-        await lineReplyText(e.replyToken, "ขออภัยค่ะ ระบบขัดข้องชั่วคราว ลองพิมพ์อีกครั้งได้เลยนะคะ 🙏");
+        await lineReplyText(
+          e.replyToken,
+          "ขออภัยค่ะ ระบบขัดข้องชั่วคราว ลองพิมพ์อีกครั้งได้เลยนะคะ 🙏"
+        );
       } catch {}
       console.error("[webhook error]", err);
     }
@@ -134,15 +154,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// ---------- GET: Health ----------
+/** ---------------- GET: Health ---------------- */
 export function GET() {
   return NextResponse.json({
     ok: true,
     brand: BRAND_NAME,
     handle: LINE_HANDLE,
-    signup: SIGNUP_URL,
-    issue: LINE_ISSUE_URL,
-    telegram: TELEGRAM_URL,
-    hint: "LINE จะเรียก endpoint นี้ด้วย POST เท่านั้นค่ะ",
+    hint: "LINE จะเรียก endpoint นี้ด้วย POST เท่านั้น",
   });
 }
