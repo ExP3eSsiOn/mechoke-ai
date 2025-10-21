@@ -23,7 +23,7 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
 
   // ขอ "รูปโปร" → ส่ง Flex โปรภาพ
   if (/(รูปโปร|โปรภาพ|promotion image|โปรโมชั่นแบบรูป)/i.test(t)) {
-    return [buildPromoFlex({ ctaUrl: process.env.SIGNUP_URL })];
+    return [buildPromoFlex({ ctaUrl: process.env.SIGNUP_URL || "https://www.mechoke.com/" })];
   }
 
   // โปรโมชัน
@@ -87,7 +87,7 @@ function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
     ];
   }
 
-  return null; // ไม่เข้า Intent → ไป Fallback (ChatGPT)
+  return null; // ไม่เข้า Intent → ให้ Fallback ไป ChatGPT
 }
 
 /** ---------------- POST: LINE Webhook ---------------- */
@@ -119,10 +119,10 @@ export async function POST(req: NextRequest) {
       console.info("[webhook] text:", userText);
 
       // 1) ตอบตาม Intent router ก่อน
-      let msgs = routeQuickAnswerToMessages(userText);
-      if (msgs && msgs.length > 0) {
+      const intentMsgs = routeQuickAnswerToMessages(userText);
+      if (intentMsgs && intentMsgs.length > 0) {
         console.info("[reply] via Router/Intent");
-        await lineReplyMessages(e.replyToken, msgs);
+        await lineReplyMessages(e.replyToken, intentMsgs);
         continue;
       }
 
@@ -133,14 +133,13 @@ export async function POST(req: NextRequest) {
         lineHandle: LINE_HANDLE,
       });
 
-      // กัน empty
       const finalText =
         (aiText && aiText.trim()) ||
         "น้องขออภัยค่ะ ระบบขัดข้องชั่วคราว ลองพิมพ์อีกครั้งได้เลยนะคะ 🙏";
 
       await lineReplyText(e.replyToken, finalText);
     } catch (err) {
-      // พยายามแจ้งลูกค้าให้สุภาพที่สุด
+      // แจ้งลูกค้าแบบสุภาพที่สุด
       try {
         await lineReplyText(
           e.replyToken,
