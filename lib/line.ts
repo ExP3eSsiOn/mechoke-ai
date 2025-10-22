@@ -1,4 +1,4 @@
-\// lib/line.ts
+// lib/line.ts
 import crypto from "crypto";
 import type { LuckyItem } from "./ai";
 
@@ -45,7 +45,7 @@ export async function lineReplyText(replyToken: string, text: string) {
   return lineReplyMessages(replyToken, [{ type: "text", text }]);
 }
 
-/** ✅ LINE Push (export ให้ route dev/prod ใช้ได้) */
+/** ✅ LINE Push (ให้ route dev/prod ใช้ได้) */
 export async function linePush(to: string, messages: LineMessage[]) {
   if (!LINE_CHANNEL_ACCESS_TOKEN) {
     throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured");
@@ -97,6 +97,11 @@ export function buildPromoFlex(opts?: { ctaUrl?: string }): LineFlexMessage {
             type: "button",
             style: "primary",
             action: { type: "uri", label: "สมัคร/เช็คอิน", uri: url },
+          },
+          {
+            type: "button",
+            style: "secondary",
+            action: { type: "uri", label: "ติดตามผลรางวัล (Telegram)", uri: TELEGRAM_URL },
           },
         ],
       },
