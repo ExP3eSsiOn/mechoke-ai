@@ -1,4 +1,4 @@
-// lib/line.ts
+\// lib/line.ts
 import crypto from "crypto";
 import type { LuckyItem } from "./ai";
 
@@ -43,6 +43,25 @@ export async function lineReplyMessages(replyToken: string, messages: LineMessag
 
 export async function lineReplyText(replyToken: string, text: string) {
   return lineReplyMessages(replyToken, [{ type: "text", text }]);
+}
+
+/** ✅ LINE Push (export ให้ route dev/prod ใช้ได้) */
+export async function linePush(to: string, messages: LineMessage[]) {
+  if (!LINE_CHANNEL_ACCESS_TOKEN) {
+    throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured");
+  }
+  const res = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({ to, messages }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LINE /v2/bot/message/push error: ${res.status} ${text}`);
+  }
 }
 
 /** Promo Flex (รูป + ปุ่ม) */
