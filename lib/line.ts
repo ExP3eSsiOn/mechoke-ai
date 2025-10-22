@@ -2,16 +2,12 @@
 import crypto from "crypto";
 import type { LuckyItem } from "./ai";
 
-/* =========================
- * Types
- * ========================= */
+/** Types */
 export type LineTextMessage = { type: "text"; text: string };
 export type LineFlexMessage = { type: "flex"; altText: string; contents: any };
 export type LineMessage = LineTextMessage | LineFlexMessage;
 
-/* =========================
- * ENV & Defaults
- * ========================= */
+/** ENV */
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
 
@@ -22,195 +18,44 @@ const TELEGRAM_URL = (process.env.TELEGRAM_URL || "https://t.me/+BR_qCVWcre40NTc
 /** รูปโปรเช็คอิน 7 วัน (ฝาก 300 รับของแถม 1 ชิ้น) */
 const PROMO_IMG_URL = (process.env.PROMO_IMG_URL || "https://chokede.com/line.jpg").trim();
 
-/* =========================
- * Helpers
- * ========================= */
+/** Verify LINE Signature (HMAC-SHA256) */
+export function verifyLineSignature(rawBody: string, signature?: string): boolean {
+  if (!signature || !LINE_CHANNEL_SECRET) return false;
+  const mac = crypto.createHmac("sha256", LINE_CHANNEL_SECRET).update(rawBody).digest("base64");
+  return mac === signature;
+}
 
-/** เรียก LINE API พร้อมแนบ Bearer token */
-async function lineFetch(path: string, init: RequestInit = {}) {
-  const res = await fetch(`https://api.line.me${path}`, {
-    ...init,
+/** LINE Reply */
+export async function lineReplyMessages(replyToken: string, messages: LineMessage[]) {
+  const res = await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      ...(init.headers || {}),
     },
-  });
-
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`LINE ${path} error: ${res.status} ${err}`);
-  }
-  return res;
-}
-
-/** บังคับให้ URL เป็น https:// ที่ถูกต้อง หากไม่ผ่านให้ fallback เป็นรูปสำรอง */
-function safeHttpsUrl(u?: string | null): string {
-  try {
-    if (!u) throw new Error("empty");
-    const url = new URL(String(u).trim());
-    if (url.protocol.toLowerCase() !== "https:") throw new Error("non-https");
-    return url.toString();
-  } catch {
-    // รูปสำรอง (CDN สาธารณะ)
-    return "https://i.imgur.com/5L2q8cA.jpeg";
-  }
-}
-
-/* =========================
- * LINE Messaging: reply / push
- * ========================= */
-export async function lineReplyMessages(replyToken: string, messages: LineMessage[]) {
-  await lineFetch("/v2/bot/message/reply", {
-    method: "POST",
     body: JSON.stringify({ replyToken, messages }),
   });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LINE /v2/bot/message/reply error: ${res.status} ${text}`);
+  }
 }
 
 export async function lineReplyText(replyToken: string, text: string) {
   return lineReplyMessages(replyToken, [{ type: "text", text }]);
 }
 
-/** ส่งข้อความแบบ push (ต้องมี userId/roomId/groupId) */
-export async function linePush(to: string, messages: LineMessage[]) {
-  await lineFetch("/v2/bot/message/push", {
-    method: "POST",
-    body: JSON.stringify({ to, messages }),
-  });
-}
-
-/* =========================
- * Signature Verify (HMAC SHA256)
- * ========================= */
-export function verifyLineSignature(rawBody: string, signature?: string | null) {
-  if (!LINE_CHANNEL_SECRET || !signature) return false;
-  const hmac = crypto.createHmac("sha256", LINE_CHANNEL_SECRET);
-  hmac.update(rawBody);
-  const expected = hmac.digest("base64");
-  return expected === signature;
-}
-
-/* =========================
- * Flex Builders
- * ========================= */
-
-/** โปรเช็คอิน 7 วัน: ฝากวันละ 300 เลือกรับของแถมฟรี 1 ชิ้น */
+/** Promo Flex (รูป + ปุ่ม) */
 export function buildPromoFlex(opts?: { ctaUrl?: string }): LineFlexMessage {
-  const cta = (opts?.ctaUrl || SIGNUP_URL).trim();
-  const heroUrl = safeHttpsUrl(PROMO_IMG_URL);
-
+  const url = (opts?.ctaUrl || SIGNUP_URL).trim();
   return {
     type: "flex",
-    altText: "โปรเช็คอิน 7 วัน • ฝากวันละ 300 เลือกรับของแถมฟรี 1 ชิ้นค่ะ 🎁",
+    altText: "โปรเช็คอิน 7 วัน ฝากวันละ 300 รับของแถม 1 ชิ้น",
     contents: {
       type: "bubble",
       hero: {
         type: "image",
-        url: heroUrl, // ✅ บังคับ https เสมอ
-        size: "full",
-        aspectRatio: "16:9",
-        aspectMode: "cover",
-      },
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "md",
-        contents: [
-          { type: "text", text: "โปรเช็คอิน 7 วัน", weight: "bold", size: "lg", wrap: true },
-          { type: "text", text: "ฝากวันละ 300 เลือกรับของแถมฟรี 1 ชิ้นค่ะ", size: "sm", color: "#888888", wrap: true },
-          { type: "separator" },
-          { type: "text", text: "จำนวนจำกัด รีบกดรับสิทธิ์นะคะ ✨", size: "sm", color: "#666666", wrap: true },
-        ],
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        spacing: "sm",
-        contents: [
-          { type: "button", style: "primary", color: "#22c55e", action: { type: "uri", label: "กดรับโปร", uri: cta } },
-          { type: "button", style: "secondary", action: { type: "uri", label: "แจ้งปัญหา (LINE)", uri: LINE_ISSUE_URL } },
-          { type: "button", style: "link", action: { type: "uri", label: "เข้ากลุ่มเทเลแกรม (ผลรางวัล)", uri: TELEGRAM_URL } },
-        ],
-      },
-    },
-  };
-}
-
-/** การช่วยเหลือเมื่อเครดิตไม่เข้า */
-export function buildCreditHelpFlex(): LineFlexMessage {
-  return {
-    type: "flex",
-    altText: "เครดิตไม่เข้าทำยังไงดีคะ",
-    contents: {
-      type: "bubble",
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "md",
-        contents: [
-          { type: "text", text: "เครดิตไม่เข้า แก้ยังไงดีคะ? 🛠️", weight: "bold", size: "lg", wrap: true },
-          {
-            type: "text",
-            text: "รบกวนแจ้งข้อมูล 3 อย่างนี้นะคะ:\n1) ยูสเซอร์/เบอร์ที่สมัคร\n2) เวลา/ยอดฝาก\n3) ธนาคาร/สลิปย่อ",
-            wrap: true,
-            size: "sm",
-            color: "#666666",
-          },
-        ],
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        spacing: "sm",
-        contents: [
-          { type: "button", style: "primary", color: "#0ea5e9", action: { type: "uri", label: "แจ้งปัญหา (LINE)", uri: LINE_ISSUE_URL } },
-          { type: "button", style: "link", action: { type: "uri", label: "สมัครสมาชิก", uri: SIGNUP_URL } },
-        ],
-      },
-    },
-  };
-}
-
-/** Flex: ข่าวเลขเด็ด (carousel) */
-export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string }): LineFlexMessage {
-  const bubbles = (items || []).slice(0, 10).map((it) => {
-    const img = safeHttpsUrl(it.imageUrl || undefined);
-    const title = String(it.title || "").slice(0, 120);
-    const source = it.source ? String(it.source) : "ข่าวเลขเด็ด";
-    const url = it.url && /^https?:\/\//i.test(it.url) ? it.url : SIGNUP_URL;
-
-    return {
-      type: "bubble",
-      hero: { type: "image", url: img, size: "full", aspectRatio: "20:13", aspectMode: "cover" },
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "sm",
-        contents: [
-          { type: "text", text: title || "อัปเดตข่าวเลขเด็ด", weight: "bold", size: "md", wrap: true },
-          { type: "box", layout: "baseline", contents: [{ type: "text", text: source, size: "xs", color: "#999999", wrap: true }] },
-        ],
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        spacing: "sm",
-        contents: [
-          { type: "button", style: "primary", action: { type: "uri", label: "อ่านข่าว", uri: url } },
-          { type: "button", style: "link", action: { type: "uri", label: "สมัครสมาชิก", uri: SIGNUP_URL } },
-        ],
-      },
-    };
-  });
-
-  // ไม่มีข่าว -> บับเบิลแจ้งเตือน (ใส่ hero ให้โครงสร้างเหมือนกันทั้งหมด ป้องกัน TS union ฟ้อง)
-  if (bubbles.length === 0) {
-    const fallbackHero = safeHttpsUrl(PROMO_IMG_URL); // ใช้รูปโปรเป็น hero
-    bubbles.push({
-      type: "bubble",
-      hero: {
-        type: "image",
-        url: fallbackHero,
+        url: PROMO_IMG_URL, // ต้องเป็น https
         size: "full",
         aspectRatio: "20:13",
         aspectMode: "cover",
@@ -220,8 +65,8 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
         layout: "vertical",
         spacing: "sm",
         contents: [
-          { type: "text", text: "ยังไม่มีข่าวอัปเดตในขณะนี้ค่ะ", weight: "bold", size: "lg", wrap: true },
-          { type: "text", text: "ลองใหม่อีกครั้ง หรือพิมพ์: โปรวันนี้ เพื่อดูโปรล่าสุด", weight: "regular", size: "sm", wrap: true },
+          { type: "text", text: "เช็คอิน 7 วัน", weight: "bold", size: "lg", wrap: true },
+          { type: "text", text: "ฝากวันละ 300 • รับของแถม 1 ชิ้น", size: "sm", wrap: true },
         ],
       },
       footer: {
@@ -229,15 +74,97 @@ export function buildLuckyNewsFlex(items: LuckyItem[], opts?: { altText?: string
         layout: "vertical",
         spacing: "sm",
         contents: [
-          { type: "button", style: "primary", action: { type: "uri", label: "สมัครสมาชิก", uri: SIGNUP_URL } },
+          {
+            type: "button",
+            style: "primary",
+            action: { type: "uri", label: "สมัคร/เช็คอิน", uri: url },
+          },
         ],
       },
-    });
-  }
+    },
+  };
+}
+
+/** Credit Help Flex */
+export function buildCreditHelpFlex(): LineFlexMessage {
+  return {
+    type: "flex",
+    altText: "แจ้งปัญหาเครดิตไม่เข้า",
+    contents: {
+      type: "bubble",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: [
+          { type: "text", text: "เครดิตไม่เข้า", weight: "bold", size: "lg", wrap: true },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              { type: "text", text: "• ยูสเซอร์/เบอร์ที่สมัคร", size: "sm", wrap: true },
+              { type: "text", text: "• เวลา/ยอดฝาก", size: "sm", wrap: true },
+              { type: "text", text: "• ธนาคาร/สลิปย่อ", size: "sm", wrap: true },
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            style: "secondary",
+            action: { type: "uri", label: "แจ้งปัญหา (LINE)", uri: LINE_ISSUE_URL },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/** (ออปชัน) แปลงข่าวเป็น Flex Carousel – ใช้ใน /api/line/push */
+export function buildLuckyNewsFlex(items: LuckyItem[]): LineFlexMessage {
+  const bubbles = (items || []).slice(0, 10).map((it) => ({
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        { type: "text", text: it.title || "อัปเดตข่าว", weight: "bold", size: "md", wrap: true },
+        ...(it.source ? [{ type: "text", text: it.source, size: "xs", wrap: true }] : []),
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        { type: "button", style: "primary", action: { type: "uri", label: "อ่านข่าว", uri: it.url || SIGNUP_URL } },
+      ],
+    },
+  }));
 
   return {
     type: "flex",
-    altText: opts?.altText || "ข่าวเลขเด็ดล่าสุดค่ะ 🗞️",
-    contents: { type: "carousel", contents: bubbles },
+    altText: "ข่าวเลขเด็ด/ดวงอัปเดต",
+    contents: bubbles.length
+      ? { type: "carousel", contents: bubbles }
+      : {
+          type: "bubble",
+          body: {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              { type: "text", text: "ยังไม่มีข่าวอัปเดตในขณะนี้ค่ะ", weight: "bold", size: "lg", wrap: true },
+              { type: "text", text: "ลองใหม่อีกครั้ง หรือพิมพ์: โปรวันนี้", size: "sm", wrap: true },
+            ],
+          },
+        },
   };
 }
