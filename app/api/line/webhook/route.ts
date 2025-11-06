@@ -13,6 +13,7 @@ import { askAI } from "@/lib/ai";
 import { trackUserId } from "@/lib/users";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validateAIResponse, sanitizeResponse } from "@/lib/response-validator";
+import { findQuickResponse, getQuickResponse } from "@/lib/quick-responses";
 
 export const runtime = "nodejs"; // ต้องใช้ Node เพื่อตรวจลายเซ็น HMAC
 
@@ -51,6 +52,13 @@ const SENSITIVE_KEYWORDS = [
 /** ---------------- Quick Router: คืนเป็น array ของข้อความ/เฟล็กซ์ ---------------- */
 function routeQuickAnswerToMessages(text: string): LineMessage[] | null {
   const t = (text || "").trim().toLowerCase();
+
+  // 🎯 ลอง match จาก Quick Response Library ก่อน
+  const quickResp = findQuickResponse(text);
+  if (quickResp) {
+    console.info("[quick-response] matched:", quickResp.key);
+    return [{ type: "text", text: quickResp.text }];
+  }
 
   // ขอ "รูปโปร" → ส่ง Flex โปรภาพ
   if (/(รูปโปร|โปรภาพ|promotion image|โปรโมชั่นแบบรูป)/i.test(t)) {

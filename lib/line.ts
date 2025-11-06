@@ -64,6 +64,10 @@ export async function linePush(to: string, messages: LineMessage[]) {
   }
 }
 
+export async function linePushText(to: string, text: string) {
+  return linePush(to, [{ type: "text", text }]);
+}
+
 /** Promo Flex (รูป + ปุ่ม) */
 export function buildPromoFlex(opts?: { ctaUrl?: string }): LineFlexMessage {
   const url = (opts?.ctaUrl || SIGNUP_URL).trim();
