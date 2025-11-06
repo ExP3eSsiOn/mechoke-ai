@@ -1,10 +1,16 @@
 // app/api/debug/users/route.ts
 import { NextResponse } from "next/server";
 import { listUsers, getStats } from "@/lib/users";
+import { verifyAdminToken, unauthorizedResponse } from "@/lib/auth";
 
 export const runtime = "nodejs"; // ต้องใช้ Node ให้แชร์ memory ได้
 
 export async function GET(req: Request) {
+  // ตรวจสอบ authentication
+  if (!verifyAdminToken(req)) {
+    return unauthorizedResponse();
+  }
+
   const url = new URL(req.url);
   const format = (url.searchParams.get("format") || "json").toLowerCase();
   const limit = Number(url.searchParams.get("limit") || "") || undefined;

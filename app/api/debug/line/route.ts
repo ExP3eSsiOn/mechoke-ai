@@ -1,4 +1,6 @@
 // app/api/debug/line/route.ts
+import { verifyAdminToken, unauthorizedResponse } from "@/lib/auth";
+
 export const runtime = "nodejs";
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 8000) {
@@ -12,7 +14,12 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 8000) 
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // ตรวจสอบ authentication
+  if (!verifyAdminToken(req)) {
+    return unauthorizedResponse();
+  }
+
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
   if (!token) {
     return new Response(

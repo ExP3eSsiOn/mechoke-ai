@@ -1,4 +1,6 @@
 // app/api/debug/status/route.ts
+import { verifyAdminToken, unauthorizedResponse } from "@/lib/auth";
+
 export const runtime = "edge"; // เร็ว + ประหยัด
 
 type CheckResult = {
@@ -33,6 +35,11 @@ function getOrigin(req: Request) {
 }
 
 export async function GET(req: Request) {
+  // ตรวจสอบ authentication
+  if (!verifyAdminToken(req)) {
+    return unauthorizedResponse();
+  }
+
   const url = new URL(req.url);
   const live = url.searchParams.get("live") === "1";
 

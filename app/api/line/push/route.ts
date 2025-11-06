@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildPromoFlex, buildLuckyNewsFlex, LineMessage } from "@/lib/line";
 import { fetchLuckyNews } from "@/lib/ai";
+import { verifyAdminToken, unauthorizedResponse } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,11 @@ async function linePush(to: string, messages: LineMessage[]) {
 }
 
 export async function POST(req: NextRequest) {
+  // ตรวจสอบ authentication
+  if (!verifyAdminToken(req)) {
+    return unauthorizedResponse();
+  }
+
   if (!LINE_CHANNEL_ACCESS_TOKEN) {
     return NextResponse.json({ error: "LINE token not configured" }, { status: 500 });
   }
